@@ -1,0 +1,78 @@
+# =========================
+# Miscellaneous
+# =========================
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# =========================
+# IntelliJ / Android Studio
+# =========================
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# Flutter / Dart / Pub
+# =========================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+**/doc/api/
+
+# =========================
+# Android
+# =========================
+android/.gradle/
+android/local.properties
+
+# 🔴 Signing & Keystore (مهم جدًا)
+android/key.properties
+android/app/key.jks
+android/app/*.keystore
+
+# Android build outputs
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# =========================
+# iOS
+# =========================
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/ephemeral/
+ios/Runner.xcworkspace/
+
+# Xcode user files
+ios/**/*.xcuserstate
+ios/**/*.xcuserdata
+
+# =========================
+# Symbolication / Obfuscation
+# =========================
+app.*.symbols
+app.*.map.json
