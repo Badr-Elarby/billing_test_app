@@ -27,31 +27,29 @@ class SubscriptionTestScreen extends StatefulWidget {
   const SubscriptionTestScreen({super.key});
 
   @override
-  State<SubscriptionTestScreen> createState() => _SubscriptionTestScreenState();
+  State<SubscriptionTestScreen> createState() =>
+      _SubscriptionTestScreenState();
 }
 
 class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
-  // ============================================================
-  // STEP 1: Initialize InAppPurchase instance
-  // ============================================================
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
 
-  // ============================================================
-  // STEP 2: Define subscription product ID
-  // TODO: Replace with your actual Google Play subscription product ID
-  // ============================================================
+ 
+ 
   static const String _subscriptionProductId = 'billing_test_monthly';
 
-  // Stream subscription for purchase updates
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
-  // UI state
   bool _isAvailable = false;
   bool _isLoading = false;
   String _statusMessage = 'Initializing...';
+
   ProductDetails? _product;
+
+  /// Android → purchaseToken
+  /// iOS → receipt (base64)
   String? _purchasedProductId;
-  String? _purchasedToken;
+  String? _purchasePayload;
 
   @override
   void initState() {
@@ -65,202 +63,95 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     super.dispose();
   }
 
-  // ============================================================
-  // STEP 3: Initialize billing and listen to purchase updates
-  // ============================================================
   Future<void> _initializeBilling() async {
-    // Check if in-app purchase is available on this device
-    final bool available = await _inAppPurchase.isAvailable();
+    final available = await _inAppPurchase.isAvailable();
 
     setState(() {
       _isAvailable = available;
       _statusMessage = available
-          ? 'Billing ready. Tap Subscribe to test.'
+          ? 'Billing ready'
           : 'Billing not available on this device';
     });
 
-    if (!available) {
-      debugPrint('❌ In-app purchase not available');
-      return;
-    }
+    if (!available) return;
 
-    // ============================================================
-    // STEP 4: Listen to purchase updates stream
-    // This is where we receive purchase status, productId, and purchaseToken
-    // ============================================================
     _subscription = _inAppPurchase.purchaseStream.listen(
       _onPurchaseUpdate,
-      onDone: () {
-        debugPrint('🔵 Purchase stream done');
-      },
       onError: (error) {
-        debugPrint('❌ Purchase stream error: $error');
         setState(() {
-          _statusMessage = 'Error: $error';
+          _statusMessage = 'Purchase error: $error';
         });
       },
     );
 
-    // Query the subscription product
     await _queryProduct();
   }
 
-  // ============================================================
-  // STEP 5: Query subscription product by ID
-  // ============================================================
   Future<void> _queryProduct() async {
     setState(() {
       _isLoading = true;
       _statusMessage = 'Querying product...';
     });
 
-    final ProductDetailsResponse response = await _inAppPurchase
-        .queryProductDetails({_subscriptionProductId});
-
-    if (response.error != null) {
-      debugPrint('❌ Error querying products: ${response.error}');
-      setState(() {
-        _isLoading = false;
-        _statusMessage = 'Error querying product: ${response.error!.message}';
-      });
-      return;
-    }
+    final response =
+        await _inAppPurchase.queryProductDetails({_subscriptionProductId});
 
     if (response.productDetails.isEmpty) {
-      debugPrint('⚠️ No products found for ID: $_subscriptionProductId');
       setState(() {
         _isLoading = false;
         _statusMessage =
-            'Product not found. Check product ID in Google Play Console.';
+            'No product found. Check Product ID & store configuration';
       });
       return;
     }
 
-    // Product found successfully
-    final product = response.productDetails.first;
-    debugPrint('✅ Product found: ${product.id} - ${product.title}');
-    debugPrint('   Price: ${product.price}');
-    debugPrint('   Description: ${product.description}');
-
     setState(() {
-      _product = product;
+      _product = response.productDetails.first;
       _isLoading = false;
-      _statusMessage = 'Product loaded: ${product.title}';
+      _statusMessage = 'Product loaded';
     });
   }
 
-  // ============================================================
-  // STEP 6: Handle Subscribe button press - Start purchase flow
-  // ============================================================
   Future<void> _startSubscription() async {
-    if (_product == null) {
-      setState(() {
-        _statusMessage = 'Product not loaded. Cannot start purchase.';
-      });
-      return;
-    }
+    if (_product == null) return;
 
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Starting purchase flow...';
+      _statusMessage = 'Starting purchase...';
     });
 
-    debugPrint('🚀 Starting subscription purchase for: ${_product!.id}');
+    final purchaseParam =
+        PurchaseParam(productDetails: _product!);
 
-    // Create purchase param for subscription
-    final PurchaseParam purchaseParam = PurchaseParam(
-      productDetails: _product!,
+    await _inAppPurchase.buyNonConsumable(
+      purchaseParam: purchaseParam,
     );
-
-    // Start the purchase flow
-    try {
-      final bool success = await _inAppPurchase.buyNonConsumable(
-        purchaseParam: purchaseParam,
-      );
-
-      if (!success) {
-        debugPrint('❌ Failed to start purchase flow');
-        setState(() {
-          _isLoading = false;
-          _statusMessage = 'Failed to start purchase';
-        });
-      } else {
-        debugPrint('✅ Purchase flow started successfully');
-      }
-    } catch (e) {
-      debugPrint('❌ Exception starting purchase: $e');
-      setState(() {
-        _isLoading = false;
-        _statusMessage = 'Error: $e';
-      });
-    }
   }
 
-  // ============================================================
-  // STEP 7: Handle purchase updates
-  // This is where we log purchaseStatus, productId, and purchaseToken
-  // ============================================================
-  void _onPurchaseUpdate(List<PurchaseDetails> purchaseDetailsList) {
-    for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('📦 PURCHASE UPDATE RECEIVED');
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('🔹 Purchase Status: ${purchaseDetails.status}');
-      debugPrint('🔹 Product ID: ${purchaseDetails.productID}');
-      debugPrint(
-        '🔹 Purchase Token: ${purchaseDetails.verificationData.serverVerificationData}',
-      );
-      debugPrint('🔹 Transaction Date: ${purchaseDetails.transactionDate}');
-      debugPrint('🔹 Purchase ID: ${purchaseDetails.purchaseID}');
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Update UI based on purchase status
+  void _onPurchaseUpdate(List<PurchaseDetails> purchases) {
+    for (final purchase in purchases) {
       setState(() {
         _isLoading = false;
 
-        switch (purchaseDetails.status) {
-          case PurchaseStatus.pending:
-            _statusMessage = '⏳ Purchase pending...';
-            debugPrint('⏳ Purchase is pending');
-            break;
+        if (purchase.status == PurchaseStatus.purchased) {
+          _purchasedProductId = purchase.productID;
 
-          case PurchaseStatus.purchased:
-            _purchasedProductId = purchaseDetails.productID;
-            _purchasedToken =
-                purchaseDetails.verificationData.serverVerificationData;
-            _statusMessage =
-                '✅ Purchase successful!\nToken: ${purchaseDetails.verificationData.serverVerificationData}';
-            debugPrint('✅ Purchase completed successfully');
-            debugPrint(
-              '💡 Use this token for backend verification and lifecycle testing',
-            );
-            break;
+          /// Android → token
+          /// iOS → receipt
+          _purchasePayload =
+              purchase.verificationData.serverVerificationData;
 
-          case PurchaseStatus.error:
-            _statusMessage =
-                '❌ Purchase failed: ${purchaseDetails.error?.message ?? "Unknown error"}';
-            debugPrint('❌ Purchase error: ${purchaseDetails.error}');
-            break;
+          _statusMessage = 'Purchase successful';
+        }
 
-          case PurchaseStatus.restored:
-            _statusMessage = '🔄 Purchase restored';
-            debugPrint('🔄 Purchase restored');
-            break;
-
-          case PurchaseStatus.canceled:
-            _statusMessage = '🚫 Purchase canceled by user';
-            debugPrint('🚫 Purchase canceled');
-            break;
+        if (purchase.status == PurchaseStatus.error) {
+          _statusMessage =
+              'Purchase failed: ${purchase.error?.message}';
         }
       });
 
-      // ============================================================
-      // STEP 8: Complete the purchase
-      // Important: Always complete the purchase to acknowledge it
-      // ============================================================
-      if (purchaseDetails.pendingCompletePurchase) {
-        _inAppPurchase.completePurchase(purchaseDetails);
-        debugPrint('✅ Purchase completed and acknowledged');
+      if (purchase.pendingCompletePurchase) {
+        _inAppPurchase.completePurchase(purchase);
       }
     }
   }
@@ -270,131 +161,91 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Billing Test App'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // App title
-              const Text(
-                'Google Play Subscription Test',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
 
-              // Product info (if loaded)
-              if (_product != null) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _product!.title,
+      
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Subscription Test',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 24),
+
+            if (_product != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_product!.title,
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(_product!.description),
-                        const SizedBox(height: 8),
-                        Text(
-                          _product!.price,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text(_product!.description),
+                      const SizedBox(height: 8),
+                      Text(
+                        _product!.price,
+                        style: const TextStyle(
+                            fontSize: 18, color: Colors.green),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
-              ],
-
-              // Subscribe button
-              ElevatedButton(
-                onPressed: (_isAvailable && !_isLoading && _product != null)
-                    ? _startSubscription
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Subscribe', style: TextStyle(fontSize: 18)),
               ),
 
-              const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
-              // Status message
-              Container(
+            ElevatedButton(
+              onPressed:
+                  (_isAvailable && !_isLoading && _product != null)
+                      ? _startSubscription
+                      : null,
+              child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : const Text('Subscribe'),
+            ),
+
+            const SizedBox(height: 24),
+
+            Card(
+              color: Colors.grey.shade100,
+              child: Padding(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _statusMessage,
-                      style: const TextStyle(fontSize: 14),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (_purchasedProductId != null &&
-                        _purchasedToken != null) ...[
+                    Text(_statusMessage),
+
+                    if (_purchasedProductId != null) ...[
+                      const SizedBox(height: 16),
+                      const Text('Product ID:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      SelectableText(_purchasedProductId!),
+                    ],
+
+                    if (_purchasePayload != null) ...[
                       const SizedBox(height: 16),
                       const Text(
-                        'Product ID:',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        'Purchase Token / Receipt:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       SelectableText(
-                        _purchasedProductId!,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Purchase Token:',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SelectableText(
-                        _purchasedToken!,
-                        style: const TextStyle(fontSize: 12),
+                        _purchasePayload!,
+                        maxLines: null,
                       ),
                     ],
                   ],
                 ),
               ),
-
-              const SizedBox(height: 16),
-
-              // Instructions
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
