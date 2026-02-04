@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -13,6 +15,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Billing Test App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -34,9 +37,16 @@ class SubscriptionTestScreen extends StatefulWidget {
 class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
 
- 
- 
-  static const String _subscriptionProductId = 'billing_test_monthly';
+  /// 🔥 PRODUCT IDS
+  /// لازم يكونوا مطابقين 100% للي هتكتبهم في كل Store
+
+  static const String _androidProductId =
+      'billing_test_monthly'; // ✅ Google Play product id
+
+  static const String _iosProductId =
+      'billing_test_monthly_ios'; // ✅ App Store product id
+
+  late final String _subscriptionProductId;
 
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
@@ -54,6 +64,11 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   @override
   void initState() {
     super.initState();
+
+    /// Detect platform automatically
+    _subscriptionProductId =
+        Platform.isIOS ? _iosProductId : _androidProductId;
+
     _initializeBilling();
   }
 
@@ -68,15 +83,15 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
     setState(() {
       _isAvailable = available;
-      _statusMessage = available
-          ? 'Billing ready'
-          : 'Billing not available on this device';
+      _statusMessage =
+          available ? 'Billing ready ✅' : 'Billing not available ❌';
     });
 
     if (!available) return;
 
     _subscription = _inAppPurchase.purchaseStream.listen(
       _onPurchaseUpdate,
+      onDone: () => _subscription?.cancel(),
       onError: (error) {
         setState(() {
           _statusMessage = 'Purchase error: $error';
@@ -96,11 +111,11 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     final response =
         await _inAppPurchase.queryProductDetails({_subscriptionProductId});
 
-    if (response.productDetails.isEmpty) {
+    if (response.notFoundIDs.isNotEmpty) {
       setState(() {
         _isLoading = false;
         _statusMessage =
-            'No product found. Check Product ID & store configuration';
+            'Product not found ⚠️ Check Store configuration.';
       });
       return;
     }
@@ -108,7 +123,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     setState(() {
       _product = response.productDetails.first;
       _isLoading = false;
-      _statusMessage = 'Product loaded';
+      _statusMessage = 'Product loaded successfully 🎉';
     });
   }
 
@@ -117,12 +132,14 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Starting purchase...';
+      _statusMessage = 'Starting purchase flow...';
     });
 
-    final purchaseParam =
-        PurchaseParam(productDetails: _product!);
+    final purchaseParam = PurchaseParam(
+      productDetails: _product!,
+    );
 
+    /// ✔️ Correct for subscriptions in this plugin
     await _inAppPurchase.buyNonConsumable(
       purchaseParam: purchaseParam,
     );
@@ -130,26 +147,37 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   void _onPurchaseUpdate(List<PurchaseDetails> purchases) {
     for (final purchase in purchases) {
-      setState(() {
-        _isLoading = false;
+      if (purchase.status == PurchaseStatus.pending) {
+        setState(() {
+          _statusMessage = 'Purchase pending...';
+        });
+      }
 
-        if (purchase.status == PurchaseStatus.purchased) {
-          _purchasedProductId = purchase.productID;
+      if (purchase.status == PurchaseStatus.purchased ||
+          purchase.status == PurchaseStatus.restored) {
+        _purchasedProductId = purchase.productID;
 
-          /// Android → token
-          /// iOS → receipt
-          _purchasePayload =
-              purchase.verificationData.serverVerificationData;
+        /// 🔥 IMPORTANT
+        /// Android → purchaseToken
+        /// iOS → receipt
+        _purchasePayload =
+            purchase.verificationData.serverVerificationData;
 
-          _statusMessage = 'Purchase successful';
-        }
+        setState(() {
+          _statusMessage = 'Purchase successful 🎉';
+          _isLoading = false;
+        });
+      }
 
-        if (purchase.status == PurchaseStatus.error) {
+      if (purchase.status == PurchaseStatus.error) {
+        setState(() {
           _statusMessage =
               'Purchase failed: ${purchase.error?.message}';
-        }
-      });
+          _isLoading = false;
+        });
+      }
 
+      /// VERY IMPORTANT — Apple ممكن ترفض build لو نسيتها
       if (purchase.pendingCompletePurchase) {
         _inAppPurchase.completePurchase(purchase);
       }
@@ -162,8 +190,6 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       appBar: AppBar(
         title: const Text('Billing Test App'),
       ),
-
-      
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -174,7 +200,6 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-
             const SizedBox(height: 24),
 
             if (_product != null)
@@ -184,16 +209,20 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_product!.title,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold)),
+                      Text(
+                        _product!.title,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       const SizedBox(height: 8),
                       Text(_product!.description),
                       const SizedBox(height: 8),
                       Text(
                         _product!.price,
                         style: const TextStyle(
-                            fontSize: 18, color: Colors.green),
+                          fontSize: 18,
+                          color: Colors.green,
+                        ),
                       ),
                     ],
                   ),
@@ -225,8 +254,11 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
                     if (_purchasedProductId != null) ...[
                       const SizedBox(height: 16),
-                      const Text('Product ID:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Product ID:',
+                        style:
+                            TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       SelectableText(_purchasedProductId!),
                     ],
 
@@ -234,7 +266,8 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                       const SizedBox(height: 16),
                       const Text(
                         'Purchase Token / Receipt:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style:
+                            TextStyle(fontWeight: FontWeight.bold),
                       ),
                       SelectableText(
                         _purchasePayload!,
