@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 void main() {
+  print("main: started");
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
+  print("main: runApp called");
 }
 
 class MyApp extends StatelessWidget {
@@ -14,6 +16,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print("MyApp.build: called");
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Billing Test App',
@@ -64,10 +67,12 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   @override
   void initState() {
     super.initState();
+    print("SubscriptionTestScreen.initState: called");
 
     /// Detect platform automatically
     _subscriptionProductId =
         Platform.isIOS ? _iosProductId : _androidProductId;
+    print("SubscriptionTestScreen.initState: platform detected as ${Platform.operatingSystem}");
 
     _initializeBilling();
   }
@@ -79,52 +84,90 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Future<void> _initializeBilling() async {
-    final available = await _inAppPurchase.isAvailable();
+    print("_initializeBilling: called");
+    try {
+      final available = await _inAppPurchase.isAvailable();
+      print("_initializeBilling: isAvailable() returned $available");
 
-    setState(() {
-      _isAvailable = available;
-      _statusMessage =
-          available ? 'Billing ready ✅' : 'Billing not available ❌';
-    });
+      setState(() {
+        _isAvailable = available;
+        _statusMessage =
+            available ? 'Billing ready ✅' : 'Billing not available ❌';
+      });
 
-    if (!available) return;
+      if (!available) {
+        print("_initializeBilling: billing not available, returning");
+        return;
+      }
 
-    _subscription = _inAppPurchase.purchaseStream.listen(
-      _onPurchaseUpdate,
-      onDone: () => _subscription?.cancel(),
-      onError: (error) {
-        setState(() {
-          _statusMessage = 'Purchase error: $error';
-        });
-      },
-    );
+      _subscription = _inAppPurchase.purchaseStream.listen(
+        _onPurchaseUpdate,
+        onDone: () {
+          print("_initializeBilling: purchaseStream onDone");
+          _subscription?.cancel();
+        },
+        onError: (error) {
+          print("_initializeBilling: purchaseStream onError: $error");
+          setState(() {
+            _statusMessage = 'Purchase error: $error';
+          });
+        },
+      );
+      print("_initializeBilling: purchaseStream listener set up");
 
-    await _queryProduct();
+      await _queryProduct();
+    } catch (e) {
+      print("_initializeBilling: caught error: $e");
+      setState(() {
+        _statusMessage = 'Initialization error: $e';
+      });
+    }
   }
 
   Future<void> _queryProduct() async {
+    print("_queryProduct: called");
     setState(() {
       _isLoading = true;
       _statusMessage = 'Querying product...';
     });
 
-    final response =
-        await _inAppPurchase.queryProductDetails({_subscriptionProductId});
+    try {
+      final response =
+          await _inAppPurchase.queryProductDetails({_subscriptionProductId});
+      print("_queryProduct: queryProductDetails returned");
 
-    if (response.notFoundIDs.isNotEmpty) {
+      if (response.error != null) {
+        print("_queryProduct: queryProductDetails error: ${response.error}");
+        setState(() {
+          _isLoading = false;
+          _statusMessage = 'Error querying product: ${response.error!.message}';
+        });
+        return;
+      }
+
+      if (response.notFoundIDs.isNotEmpty) {
+        print("_queryProduct: product not found: ${response.notFoundIDs}");
+        setState(() {
+          _isLoading = false;
+          _statusMessage =
+              'Product not found ⚠️ Check Store configuration.';
+        });
+        return;
+      }
+
+      print("_queryProduct: product found: ${response.productDetails.first.id}");
+      setState(() {
+        _product = response.productDetails.first;
+        _isLoading = false;
+        _statusMessage = 'Product loaded successfully 🎉';
+      });
+    } catch (e) {
+      print("_queryProduct: caught error: $e");
       setState(() {
         _isLoading = false;
-        _statusMessage =
-            'Product not found ⚠️ Check Store configuration.';
+        _statusMessage = 'Error querying product: $e';
       });
-      return;
     }
-
-    setState(() {
-      _product = response.productDetails.first;
-      _isLoading = false;
-      _statusMessage = 'Product loaded successfully 🎉';
-    });
   }
 
   Future<void> _startSubscription() async {
@@ -146,7 +189,9 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   void _onPurchaseUpdate(List<PurchaseDetails> purchases) {
+    print("_onPurchaseUpdate: called with ${purchases.length} purchases");
     for (final purchase in purchases) {
+      print("_onPurchaseUpdate: processing purchase with status ${purchase.status}");
       if (purchase.status == PurchaseStatus.pending) {
         setState(() {
           _statusMessage = 'Purchase pending...';
@@ -170,6 +215,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       }
 
       if (purchase.status == PurchaseStatus.error) {
+        print("_onPurchaseUpdate: purchase error: ${purchase.error}");
         setState(() {
           _statusMessage =
               'Purchase failed: ${purchase.error?.message}';
@@ -179,6 +225,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
       /// VERY IMPORTANT — Apple ممكن ترفض build لو نسيتها
       if (purchase.pendingCompletePurchase) {
+        print("_onPurchaseUpdate: completing purchase");
         _inAppPurchase.completePurchase(purchase);
       }
     }
@@ -186,6 +233,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print("SubscriptionTestScreen.build: called");
     return Scaffold(
       appBar: AppBar(
         title: const Text('Billing Test App'),
